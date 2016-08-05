@@ -1061,22 +1061,6 @@ function AngryNotes:OnInitialize()
 					self:ResetPosition()
 				end
 			},
-			version = {
-				type = "execute",
-				order = 21,
-				name = "Version Check",
-				desc = "Displays a list of all users (in the raid) running the addon and the version they're running",
-				func = function()
-					if (IsInRaid() or IsInGroup()) then
-						versionList = {} -- start with a fresh version list, when displaying it
-						self:SendMessage({ "VER_QUERY" }) 
-						self:ScheduleTimer("VersionCheckOutput", 3)
-						self:Print("Version check running...")
-					else
-						self:Print("You must be in a raid group to run the version check.")
-					end
-				end
-			},
 			lock = {
 				type = "execute",
 				order = 2,
@@ -1243,11 +1227,14 @@ function AngryNotes:OnInitialize()
 end
 
 function AngryNotes:ChatCommand(input)
-  if not input or input:trim() == "" then
-	AngryNotes_ToggleWindow()
-  else
-    LibStub("AceConfigCmd-3.0").HandleCommand(self, "an", "AngryNotes", input)
-  end
+	if not input or input:trim() == "" then
+		AngryNotes_ToggleWindow()
+	elseif input:trim() == "config" then
+		InterfaceOptionsFrame_OpenToCategory(blizOptionsPanel)
+		InterfaceOptionsFrame_OpenToCategory(blizOptionsPanel)
+	else
+		LibStub("AceConfigCmd-3.0").HandleCommand(self, "an", "AngryNotes", input)
+	end
 end
 
 function AngryNotes:OnEnable()
@@ -1292,4 +1279,5 @@ function AngryNotes:AfterEnable()
 	self:RegisterEvent("GROUP_ROSTER_UPDATE")
 	
 	self:UpdateDisplayedIfNewGroup()
+	self:UpdateBackdrop()
 end
