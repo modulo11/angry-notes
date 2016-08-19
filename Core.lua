@@ -19,10 +19,19 @@ local currentGroup = nil
 -- 		[Id] = { Id = "1231", Name = "Name", Contents = "...", },
 --		...
 -- 	}
+-- 	AngryNotes_Categories = {
+-- 		[Id] = { Id = "1231", Name = "Name", Children = { 123, ... }  },
+--		...
+-- 	}
 
 -----------------------
 -- Utility Functions --
 -----------------------
+
+local function selectedLastValue(input)
+	local a, b = strsplit("", input or "", 2)
+	return tonumber(b) or tonumber(a)
+end
 
 local _player_realm = nil
 local function EnsureUnitFullName(unit)
@@ -128,8 +137,8 @@ local function AngryNotes_AddPage(widget, event, value)
 	StaticPopup_Show(popup_name)
 end
 
-local function AngryNotes_RenamePage(widget, event, value)
-	local page = AngryNotes:Get()
+local function AngryNotes_RenamePage(pageId)
+	local page = AngryNotes:Get(pageId)
 	if not page then return end
 
 	local popup_name = "AngryNotes_RenamePage_"..page.Id
@@ -161,8 +170,8 @@ local function AngryNotes_RenamePage(widget, event, value)
 	StaticPopup_Show(popup_name)
 end
 
-local function AngryNotes_DeletePage(widget, event, value)
-	local page = AngryNotes:Get()
+local function AngryNotes_DeletePage(pageId)
+	local page = AngryNotes:Get(pageId)
 	if not page then return end
 
 	local popup_name = "AngryNotes_DeletePage_"..page.Id
@@ -181,6 +190,97 @@ local function AngryNotes_DeletePage(widget, event, value)
 	StaticPopupDialogs[popup_name].text = 'Are you sure you want to delete page "'.. page.Name ..'"?'
 
 	StaticPopup_Show(popup_name)
+end
+
+local function AngryNotes_AddCategory(widget, event, value)
+	local popup_name = "AngryNotes_AddCategory"
+	if StaticPopupDialogs[popup_name] == nil then
+		StaticPopupDialogs[popup_name] = {
+			button1 = OKAY,
+			button2 = CANCEL,
+			OnAccept = function(self)
+				local text = self.editBox:GetText()
+				if text ~= "" then AngryNotes:CreateCategory(text) end
+			end,
+			EditBoxOnEnterPressed = function(self)
+				local text = self:GetParent().editBox:GetText()
+				if text ~= "" then AngryNotes:CreateCategory(text) end
+				self:GetParent():Hide()
+			end,
+			text = "New category name:",
+			hasEditBox = true,
+			whileDead = true,
+			EditBoxOnEscapePressed = function(self) self:GetParent():Hide() end,
+			hideOnEscape = true,
+			preferredIndex = 3
+		}
+	end
+	StaticPopup_Show(popup_name)
+end
+
+local function AngryNotes_RenameCategory(catId)
+	local cat = AngryNotes:GetCat(catId)
+	if not cat then return end
+
+	local popup_name = "AngryNotes_RenameCategory_"..cat.Id
+	if StaticPopupDialogs[popup_name] == nil then
+		StaticPopupDialogs[popup_name] = {
+			button1 = OKAY,
+			button2 = CANCEL,
+			OnAccept = function(self)
+				local text = self.editBox:GetText()
+				AngryNotes:RenameCategory(cat.Id, text)
+			end,
+			EditBoxOnEnterPressed = function(self)
+				local text = self:GetParent().editBox:GetText()
+				AngryNotes:RenameCategory(cat.Id, text)
+				self:GetParent():Hide()
+			end,
+			OnShow = function(self)
+				self.editBox:SetText(cat.Name)
+			end,
+			whileDead = true,
+			hasEditBox = true,
+			EditBoxOnEscapePressed = function(self) self:GetParent():Hide() end,
+			hideOnEscape = true,
+			preferredIndex = 3
+		}
+	end
+	StaticPopupDialogs[popup_name].text = 'Rename category "'.. cat.Name ..'" to:'
+
+	StaticPopup_Show(popup_name)
+end
+
+local function AngryNotes_DeleteCategory(catId)
+	local cat = AngryNotes:GetCat(catId)
+	if not cat then return end
+
+	local popup_name = "AngryNotes_DeleteCategory_"..cat.Id
+	if StaticPopupDialogs[popup_name] == nil then
+		StaticPopupDialogs[popup_name] = {
+			button1 = OKAY,
+			button2 = CANCEL,
+			OnAccept = function(self)
+				AngryNotes:DeleteCategory(cat.Id)
+			end,
+			whileDead = true,
+			hideOnEscape = true,
+			preferredIndex = 3
+		}
+	end
+	StaticPopupDialogs[popup_name].text = 'Are you sure you want to delete category "'.. cat.Name ..'"?'
+
+	StaticPopup_Show(popup_name)
+end
+
+local function AngryNotes_AssignCategory(frame, pageId, catId)
+	local page = AngryNotes_Pages[pageId]
+	local cat = AngryNotes_Categories[catId]
+	if not page or not cat then return end
+	
+	HideDropDownMenu(1)
+
+	AngryNotes:AssignCategory(page.Id, cat.Id)
 end
 
 local function AngryNotes_RevertPage(widget, event, value)
@@ -228,6 +328,82 @@ local function AngryNotes_TextEntered(widget, event, value)
 	AngryNotes:UpdateContents(AngryNotes:SelectedId(), value)
 end
 
+local PagesDropDownList
+local function AngryNotes_PageMenu(pageId)
+	local page = AngryNotes_Pages[pageId]
+	if not page then return end
+
+	if not PagesDropDownList then
+		PagesDropDownList = {
+			{ notCheckable = true, isTitle = true },
+			{ text = "Rename", notCheckable = true, func = function(frame, pageId) AngryNotes_RenamePage(pageId) end },
+			{ text = "Delete", notCheckable = true, func = function(frame, pageId) AngryNotes_DeletePage(pageId) end },
+			{ text = "Category", notCheckable = true, hasArrow = true },
+		}
+	end
+
+	PagesDropDownList[1].text = page.Name
+	PagesDropDownList[2].arg1 = pageId
+	PagesDropDownList[3].arg1 = pageId
+
+	local categories = {}
+	for _, cat in pairs(AngryNotes_Categories) do
+		table.insert(categories, { text = cat.Name, value = cat.Id, checked = tContains(cat.Children, pageId), func = AngryNotes_AssignCategory, arg1 = pageId, arg2 = cat.Id })
+	end
+	table.sort(categories, function(a,b) return a.text < b.text end)
+	PagesDropDownList[4].menuList = categories
+
+	return PagesDropDownList
+end
+
+local CategoriesDropDownList
+local function AngryNotes_CategoryMenu(catId)
+	local cat = AngryNotes_Categories[catId]
+	if not cat then return end
+
+	if not CategoriesDropDownList then
+		CategoriesDropDownList = {
+			{ notCheckable = true, isTitle = true },
+			{ text = "Rename", notCheckable = true, func = function(frame, pageId) AngryNotes_RenameCategory(pageId) end },
+			{ text = "Delete", notCheckable = true, func = function(frame, pageId) AngryNotes_DeleteCategory(pageId) end },
+		}
+	end
+	CategoriesDropDownList[1].text = cat.Name
+	CategoriesDropDownList[2].arg1 = catId
+	CategoriesDropDownList[3].arg1 = catId
+
+	return CategoriesDropDownList
+end
+
+local AngryNotes_DropDown
+local function AngryNotes_TreeClick(widget, event, value, selected, button)
+	HideDropDownMenu(1)
+	local selectedId = selectedLastValue(value)
+	if selectedId < 0 then
+		if button == "RightButton" then
+			if not AngryNotes_DropDown then
+				AngryNotes_DropDown = CreateFrame("Frame", "AngryNotesMenuFrame", UIParent, "UIDropDownMenuTemplate")
+			end
+			EasyMenu(AngryNotes_CategoryMenu(-selectedId), AngryNotes_DropDown, "cursor", 0 , 0, "MENU")
+
+		else
+			local status = (widget.status or widget.localstatus).groups
+			status[value] = not status[value]
+			widget:RefreshTree()
+		end
+		return false
+	else
+		if button == "RightButton" then
+			if not AngryNotes_DropDown then
+				AngryNotes_DropDown = CreateFrame("Frame", "AngryNotesMenuFrame", UIParent, "UIDropDownMenuTemplate")
+			end
+			EasyMenu(AngryNotes_PageMenu(selectedId), AngryNotes_DropDown, "cursor", 0 , 0, "MENU")
+
+			return false
+		end
+	end
+end
+
 function AngryNotes:CreateWindow()
 	local window = AceGUI:Create("Frame")
 	window:SetTitle("Angry Notes")
@@ -244,7 +420,7 @@ function AngryNotes:CreateWindow()
 	window.frame:SetFrameLevel(1)
 	tinsert(UISpecialFrames, "AngryNotes_Window")
 
-	local tree = AceGUI:Create("TreeGroup")
+	local tree = AceGUI:Create("AngryTreeGroup")
 	tree:SetTree( self:GetTree() )
 	tree:SelectByValue(1)
 	tree:SetStatusTable(AngryNotes_State.tree)
@@ -252,6 +428,7 @@ function AngryNotes:CreateWindow()
 	tree:SetFullHeight(true)
 	tree:SetLayout("Flow")
 	tree:SetCallback("OnGroupSelected", function(widget, event, value) AngryNotes:UpdateSelected(true) end)
+	tree:SetCallback("OnClick", AngryNotes_TreeClick)
 	window:AddChild(tree)
 	window.tree = tree
 
@@ -318,7 +495,7 @@ function AngryNotes:CreateWindow()
 	button_rename:SetHeight(19)
 	button_rename:ClearAllPoints()
 	button_rename:SetPoint("BOTTOMLEFT", button_add.frame, "BOTTOMRIGHT", 5, 0)
-	button_rename:SetCallback("OnClick", AngryNotes_RenamePage)
+	button_rename:SetCallback("OnClick", function() AngryNotes_RenamePage() end)
 	window:AddChild(button_rename)
 	window.button_rename = button_rename
 
@@ -328,9 +505,19 @@ function AngryNotes:CreateWindow()
 	button_delete:SetHeight(19)
 	button_delete:ClearAllPoints()
 	button_delete:SetPoint("BOTTOMLEFT", button_rename.frame, "BOTTOMRIGHT", 5, 0)
-	button_delete:SetCallback("OnClick", AngryNotes_DeletePage)
+	button_delete:SetCallback("OnClick", function() AngryNotes_DeletePage() end)
 	window:AddChild(button_delete)
 	window.button_delete = button_delete
+
+	local button_add_cat = AceGUI:Create("Button")
+	button_add_cat:SetText("Add Category")
+	button_add_cat:SetWidth(120)
+	button_add_cat:SetHeight(19)
+	button_add_cat:ClearAllPoints()
+	button_add_cat:SetPoint("BOTTOMLEFT", button_delete.frame, "BOTTOMRIGHT", 5, 0)
+	button_add_cat:SetCallback("OnClick", function() AngryNotes_AddCategory() end)
+	window:AddChild(button_add_cat)
+	window.button_add_cat = button_add_cat
 
 	local button_clear = AceGUI:Create("Button")
 	button_clear:SetText("Clear")
@@ -369,24 +556,40 @@ end
 
 function AngryNotes:GetTree()
 
-	local sortTable = {}
-	for _, page in pairs(AngryNotes_Pages) do
-		tinsert(sortTable, { Id = page.Id, Name = page.Name })
+	local pagesInCategories = {}
+	local tree = {}
+
+	for _, cat in pairs(AngryNotes_Categories) do
+		local children = {}
+		for _, pageId in ipairs(cat.Children) do
+			local page = AngryNotes_Pages[pageId]
+			if page then
+				pagesInCategories[page.Id] = true
+				if page.Id == AngryNotes_State.displayed then
+					table.insert(children, { value = page.Id, text = page.Name, icon = "Interface\\BUTTONS\\UI-GuildButton-MOTD-Up" })
+				else
+					table.insert(children, { value = page.Id, text = page.Name })
+				end
+			end
+		end
+		table.sort(children, function(a,b) return a.text < b.text end)
+
+		table.insert(tree, { value = -cat.Id, text = cat.Name, children = children })
 	end
 
-	table.sort( sortTable, function(a,b) return a.Name < b.Name end)
-
-
-	local ret = {}
-	for _, page in ipairs(sortTable) do
-		if page.Id == AngryNotes_State.displayed then
-			tinsert(ret, { value = page.Id, text = page.Name, icon = "Interface\\BUTTONS\\UI-GuildButton-MOTD-Up" })
-		else
-			tinsert(ret, { value = page.Id, text = page.Name })
+	for _, page in pairs(AngryNotes_Pages) do
+		if not pagesInCategories[page.Id] then
+			if page.Id == AngryNotes_State.displayed then
+				table.insert(tree, { value = page.Id, text = page.Name, icon = "Interface\\BUTTONS\\UI-GuildButton-MOTD-Up" })
+			else
+				table.insert(tree, { value = page.Id, text = page.Name })
+			end
 		end
 	end
 
-	return ret
+	table.sort(tree, function(a,b) return a.text < b.text end)
+
+	return tree
 end
 
 function AngryNotes:UpdateTree(id)
@@ -435,12 +638,16 @@ end
 ----------------------------------
 
 function AngryNotes:SelectedId()
-	return AngryNotes_State.tree.selected
+	return selectedLastValue( AngryNotes_State.tree.selected )
 end
 
 function AngryNotes:Get(id)
 	if id == nil then id = self:SelectedId() end
 	return AngryNotes_Pages[id]
+end
+
+function AngryNotes:GetCat(id)
+	return AngryNotes_Categories[id]
 end
 
 function AngryNotes:CreatePage(name)
@@ -471,6 +678,64 @@ function AngryNotes:DeletePage(id)
 		self:ClearDisplayed()
 	end
 	self:UpdateTree()
+end
+
+function AngryNotes:CreateCategory(name)
+	local id = math.random(2000000000)
+
+	AngryNotes_Categories[id] = { Id = id, Name = name, Children = {} }
+	self:UpdateTree()
+end
+
+function AngryNotes:RenameCategory(id, name)
+	local cat = self:GetCat(id)
+	if not cat then return end
+
+	cat.Name = name
+
+	self:UpdateTree()
+end
+
+function AngryNotes:DeleteCategory(id)
+	local cat = self:GetCat(id)
+	if not cat then return end
+
+	local selectedId = self:SelectedId()
+	local wasChild = tContains(cat.Children, selectedId)
+
+	AngryNotes_Categories[id] = nil
+
+	self:UpdateTree()
+	if wasChild then
+		self.window.tree:SelectByValue(selectedId)
+	end
+end
+
+function AngryNotes:AssignCategory(pageId, catId)
+	local page = self:Get(pageId)
+	local cat = self:GetCat(catId)
+	if not page or not cat then return end
+
+	local parentId
+	if tContains(cat.Children, page.Id) then -- Already in that category, so unassign
+		tDeleteItem(cat.Children, page.Id)
+	else
+		for _, c in pairs(AngryNotes_Categories) do
+			tDeleteItem(c.Children, page.Id)
+		end
+		table.insert(cat.Children, page.Id)
+		parentId = cat.Id
+	end
+	
+	local selectedId = self:SelectedId()
+	self:UpdateTree()
+	if selectedId == page.Id then
+		if parentId then
+			self.window.tree:SelectByPath(-parentId, selectedId)
+		else
+			self.window.tree:SelectByValue(selectedId)
+		end
+	end
 end
 
 function AngryNotes:UpdateContents(id, value)
@@ -714,6 +979,7 @@ function AngryNotes:UpdateMedia()
 	
 	self.display_text:SetTextColor( HexToRGB(self:GetConfig('color')) )
 	self.display_text:SetFont(fontName, fontHeight, fontFlags)
+	self.display_text:SetSpacing( AngryNotes:GetConfig('lineSpacing') )
 	self:UpdateBackdrop()
 end
 
@@ -760,6 +1026,18 @@ function AngryNotes:UpdateDisplayed()
 			:gsub(ci_pattern('|corange'), "|cffff9d00")
 			:gsub(ci_pattern('|cpink'), "|cfff64c97")
 			:gsub(ci_pattern('|cpurple'), "|cffdc44eb")
+			:gsub(ci_pattern('|cdeathknight'), "|cffc41f3b")
+			:gsub(ci_pattern('|cdruid'), "|cffff7d0a")
+			:gsub(ci_pattern('|chunter'), "|cffabd473")
+			:gsub(ci_pattern('|cmage'), "|cff69ccf0")
+			:gsub(ci_pattern('|cmonk'), "|cff00ff96")
+			:gsub(ci_pattern('|cpaladin'), "|cfff58cba")
+			:gsub(ci_pattern('|cpriest'), "|cffffffff")
+			:gsub(ci_pattern('|crogue'), "|cfffff569")
+			:gsub(ci_pattern('|cshaman'), "|cff0070de")
+			:gsub(ci_pattern('|cwarlock'), "|cff9482c9")
+			:gsub(ci_pattern('|cwarrior'), "|cffc79c6e")
+			:gsub(ci_pattern('|cdemonhunter'), "|cffa330c9")
 			:gsub("([^%s%p]+)", function(word)
 				local word_lower = word:lower()
 				for _, token in ipairs(highlights) do
@@ -792,6 +1070,9 @@ function AngryNotes:UpdateDisplayed()
 			:gsub(ci_pattern('{hs}'), "|TInterface\\Icons\\INV_Stone_04:0|t")
 			:gsub(ci_pattern('{bloodlust}'), "{bl}")
 			:gsub(ci_pattern('{bl}'), "|TInterface\\Icons\\SPELL_Nature_Bloodlust:0|t")
+			:gsub(ci_pattern('{icon%s+(%d+)}'), function(id)
+				return format("|T%s:0|t", select(3, GetSpellInfo(tonumber(id))) )
+			end)
 			:gsub(ci_pattern('{icon%s+([%w_]+)}'), "|TInterface\\Icons\\%1:0|t")
 			:gsub(ci_pattern('{damage}'), "{dps}")
 			:gsub(ci_pattern('{tank}'), "|TInterface\\LFGFrame\\UI-LFG-ICON-PORTRAITROLES:0:0:0:0:64:64:0:19:22:41|t")
@@ -810,6 +1091,7 @@ function AngryNotes:UpdateDisplayed()
 			:gsub(ci_pattern('{druid}'), "|TInterface\\GLUES\\CHARACTERCREATE\\UI-CHARACTERCREATE-CLASSES:0:0:0:0:64:64:48:64:0:16|t")
 			:gsub(ci_pattern('{monk}'), "|TInterface\\GLUES\\CHARACTERCREATE\\UI-CHARACTERCREATE-CLASSES:0:0:0:0:64:64:32:48:32:48|t")
 			:gsub(ci_pattern('{shaman}'), "|TInterface\\GLUES\\CHARACTERCREATE\\UI-CHARACTERCREATE-CLASSES:0:0:0:0:64:64:16:32:16:32|t")
+			:gsub(ci_pattern('{demonhunter}'), "|TInterface\\GLUES\\CHARACTERCREATE\\UI-CHARACTERCREATE-CLASSES:0:0:0:0:64:64:64:48:32:48|t")
 
 		self.display_text:Clear()
 		local lines = { strsplit("\n", text) }
@@ -856,7 +1138,18 @@ function AngryNotes:OutputDisplayed(id)
 			:gsub(ci_pattern('|corange'), "")
 			:gsub(ci_pattern('|cpink'), "")
 			:gsub(ci_pattern('|cpurple'), "")
-			:gsub(ci_pattern('|cpurple'), "")
+			:gsub(ci_pattern('|cdeathknight'), "")
+			:gsub(ci_pattern('|cdruid'), "")
+			:gsub(ci_pattern('|chunter'), "")
+			:gsub(ci_pattern('|cmage'), "")
+			:gsub(ci_pattern('|cmonk'), "")
+			:gsub(ci_pattern('|cpaladin'), "")
+			:gsub(ci_pattern('|cpriest'), "")
+			:gsub(ci_pattern('|crogue'), "")
+			:gsub(ci_pattern('|cshaman'), "")
+			:gsub(ci_pattern('|cwarlock'), "")
+			:gsub(ci_pattern('|cwarrior'), "")
+			:gsub(ci_pattern('|cdemonhunter'), "")
 			:gsub(ci_pattern('|c%w?%w?%w?%w?%w?%w?%w?%w?'), "")
 			:gsub(ci_pattern('{spell%s+(%d+)}'), function(id)
 				return GetSpellLink(id)
@@ -897,6 +1190,7 @@ function AngryNotes:OutputDisplayed(id)
 			:gsub(ci_pattern('{druid}'), LOCALIZED_CLASS_NAMES_MALE["DRUID"])
 			:gsub(ci_pattern('{monk}'), LOCALIZED_CLASS_NAMES_MALE["MONK"])
 			:gsub(ci_pattern('{shaman}'), LOCALIZED_CLASS_NAMES_MALE["SHAMAN"])
+			:gsub(ci_pattern('{demonhunter}'), LOCALIZED_CLASS_NAMES_MALE["DEMONHUNTER"])
 		
 		local lines = { strsplit("\n", output) }
 		for _, line in ipairs(lines) do
@@ -920,6 +1214,7 @@ local configDefaults = {
 	highlight = "",
 	highlightColor = "ffd200",
 	color = "ffffff",
+	lineSpacing = 0,
 	backdropShow = false,
 	backdropColor = "00000080",
 }
@@ -954,11 +1249,8 @@ function AngryNotes:OnInitialize()
 	end
 	if AngryNotes_Pages == nil then AngryNotes_Pages = { } end
 	if AngryNotes_Config == nil then AngryNotes_Config = { } end
-	if not AngryNotes_Config.highlightColor and AngryNotes_Config.highlightColorR and AngryNotes_Config.highlightColorG and AngryNotes_Config.highlightColorB then
-		AngryNotes_Config.highlightColor = RGBToHex( AngryNotes_Config.highlightColorR, AngryNotes_Config.highlightColorG, AngryNotes_Config.highlightColorB )
-		AngryNotes_Config.highlightColorR = nil
-		AngryNotes_Config.highlightColorG = nil
-		AngryNotes_Config.highlightColorB = nil
+	if AngryNotes_Categories == nil then
+		AngryNotes_Categories = { }
 	end
 
 	local ver = AngryNotes_Version
@@ -1003,6 +1295,7 @@ function AngryNotes:OnInitialize()
 				func = function()
 					AngryNotes_State.displayed = nil
 					AngryNotes_Pages = {}
+					AngryNotes_Categories = {}
 					self:UpdateTree()
 					self:UpdateSelected()
 					self:UpdateDisplayed()
@@ -1213,7 +1506,24 @@ function AngryNotes:OnInitialize()
 							self:SetConfig('highlightColor', RGBToHex(r, g, b))
 							self:UpdateDisplayed()
 						end
-					}
+					},
+					linespacing = {
+						type = "range",
+						order = 6,
+						name = "Line Spacing",
+						desc = function()
+							return "Sets the line spacing used to display a page"
+						end,
+						min = 0,
+						max = 10,
+						step = 1,
+						get = function(info) return self:GetConfig('lineSpacing') end,
+						set = function(info, val)
+							self:SetConfig('lineSpacing', val)
+							self:UpdateMedia()
+							self:UpdateDisplayed()
+						end
+					},
 				}
 			},
 		}
