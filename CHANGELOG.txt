@@ -1,3 +1,11 @@
+## v0.2.0
+
+* Added categories to help organize notes. They can be assigned by right clicking on a page in the list.
+* Added shortcuts for class color escape sequences, ex: |cdruid or |cshaman
+* Added the ability to use a spell id for {icon ...} substitutions, ex: {icon 774} instead of {icon spell_nature_rejuvenation}
+* Added configuration option to adjust line spacing in note display
+* Added Demon Hunter class icon substitution, {demonhunter}
+
 ## v0.1.0
 
 * Initial release.
