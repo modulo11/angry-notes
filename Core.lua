@@ -16,11 +16,11 @@ local currentGroup = nil
 
 -- Pages Saved Variable Format 
 -- 	AngryNotes_Pages = {
--- 		[Id] = { Id = "1231", Name = "Name", Contents = "...", },
+-- 		[Id] = { Id = "1231", Name = "Name", Contents = "...", CategoryId = 123 },
 --		...
 -- 	}
 -- 	AngryNotes_Categories = {
--- 		[Id] = { Id = "1231", Name = "Name", Children = { 123, ... }  },
+-- 		[Id] = { Id = "1231", Name = "Name", CategoryId = 123 },
 --		...
 -- 	}
 
@@ -29,8 +29,14 @@ local currentGroup = nil
 -----------------------
 
 local function selectedLastValue(input)
-	local a, b = strsplit("", input or "", 2)
-	return tonumber(b) or tonumber(a)
+	local a = select(-1, strsplit("", input or ""))
+	return tonumber(a)
+end
+
+local function tReverse(tbl)
+	for i=1, math.floor(#tbl / 2) do
+		tbl[i], tbl[#tbl - i + 1] = tbl[#tbl - i + 1], tbl[i]
+	end
 end
 
 local _player_realm = nil
@@ -273,14 +279,10 @@ local function AngryNotes_DeleteCategory(catId)
 	StaticPopup_Show(popup_name)
 end
 
-local function AngryNotes_AssignCategory(frame, pageId, catId)
-	local page = AngryNotes_Pages[pageId]
-	local cat = AngryNotes_Categories[catId]
-	if not page or not cat then return end
-	
+local function AngryNotes_AssignCategory(frame, entryId, catId)
 	HideDropDownMenu(1)
 
-	AngryNotes:AssignCategory(page.Id, cat.Id)
+	AngryNotes:AssignCategory(entryId, catId)
 end
 
 local function AngryNotes_RevertPage(widget, event, value)
@@ -328,8 +330,34 @@ local function AngryNotes_TextEntered(widget, event, value)
 	AngryNotes:UpdateContents(AngryNotes:SelectedId(), value)
 end
 
+local function AngryNotes_CategoryMenuList(entryId, parentId)
+	local categories = {}
+
+	local checkedId
+	if entryId > 0 then
+		local page = AngryNotes_Pages[entryId]
+		checkedId = page.CategoryId
+	else
+		local cat = AngryNotes_Categories[-entryId]
+		checkedId = cat.CategoryId
+	end
+
+	for _, cat in pairs(AngryNotes_Categories) do
+		if cat.Id ~= -entryId and (parentId or not cat.CategoryId) and (not parentId or cat.CategoryId == parentId) then 
+			local subMenu = AngryNotes_CategoryMenuList(entryId, cat.Id)
+			table.insert(categories, { text = cat.Name, value = cat.Id, menuList = subMenu, hasArrow = (subMenu ~= nil), checked = (checkedId == cat.Id), func = AngryNotes_AssignCategory, arg1 = entryId, arg2 = cat.Id })
+		end
+	end
+
+	table.sort(categories, function(a,b) return a.text < b.text end)
+
+	if #categories  > 0 then
+		return categories
+	end
+end
+
 local PagesDropDownList
-local function AngryNotes_PageMenu(pageId)
+function AngryNotes_PageMenu(pageId)
 	local page = AngryNotes_Pages[pageId]
 	if not page then return end
 
@@ -345,13 +373,7 @@ local function AngryNotes_PageMenu(pageId)
 	PagesDropDownList[1].text = page.Name
 	PagesDropDownList[2].arg1 = pageId
 	PagesDropDownList[3].arg1 = pageId
-
-	local categories = {}
-	for _, cat in pairs(AngryNotes_Categories) do
-		table.insert(categories, { text = cat.Name, value = cat.Id, checked = tContains(cat.Children, pageId), func = AngryNotes_AssignCategory, arg1 = pageId, arg2 = cat.Id })
-	end
-	table.sort(categories, function(a,b) return a.text < b.text end)
-	PagesDropDownList[4].menuList = categories
+	PagesDropDownList[4].menuList = AngryNotes_CategoryMenuList(pageId)
 
 	return PagesDropDownList
 end
@@ -366,11 +388,13 @@ local function AngryNotes_CategoryMenu(catId)
 			{ notCheckable = true, isTitle = true },
 			{ text = "Rename", notCheckable = true, func = function(frame, pageId) AngryNotes_RenameCategory(pageId) end },
 			{ text = "Delete", notCheckable = true, func = function(frame, pageId) AngryNotes_DeleteCategory(pageId) end },
+			{ text = "Category", notCheckable = true, hasArrow = true },
 		}
 	end
 	CategoriesDropDownList[1].text = cat.Name
 	CategoriesDropDownList[2].arg1 = catId
 	CategoriesDropDownList[3].arg1 = catId
+	CategoriesDropDownList[4].menuList = AngryNotes_CategoryMenuList(-catId)
 
 	return CategoriesDropDownList
 end
@@ -534,56 +558,46 @@ function AngryNotes:CreateWindow()
 	--self:CreateIconPicker()
 end
 
-function AngryNotes:SelectedUpdated(sender)
-	if self.window and self.window.text.button:IsEnabled() then
-		local popup_name = "AngryNotes_PageUpdated"
-		if StaticPopupDialogs[popup_name] == nil then
-			StaticPopupDialogs[popup_name] = {
-				button1 = OKAY,
-				whileDead = true,
-				text = "",
-				hideOnEscape = true,
-				preferredIndex = 3
-			}
-		end
-		StaticPopupDialogs[popup_name].text = "The page you are editing has been updated by "..sender..".\n\nYou can view this update by reverting your changes."
-		StaticPopup_Show(popup_name)
-		return true
+local function GetTree_InsertPage(tree, page)
+	if page.Id == AngryNotes_State.displayed then
+		table.insert(tree, { value = page.Id, text = page.Name, icon = "Interface\\BUTTONS\\UI-GuildButton-MOTD-Up" })
 	else
-		return false
+		table.insert(tree, { value = page.Id, text = page.Name })
 	end
 end
 
-function AngryNotes:GetTree()
-
-	local pagesInCategories = {}
+local function GetTree_InsertChildren(categoryId, displayedPages)
 	local tree = {}
-
 	for _, cat in pairs(AngryNotes_Categories) do
-		local children = {}
-		for _, pageId in ipairs(cat.Children) do
-			local page = AngryNotes_Pages[pageId]
-			if page then
-				pagesInCategories[page.Id] = true
-				if page.Id == AngryNotes_State.displayed then
-					table.insert(children, { value = page.Id, text = page.Name, icon = "Interface\\BUTTONS\\UI-GuildButton-MOTD-Up" })
-				else
-					table.insert(children, { value = page.Id, text = page.Name })
-				end
-			end
+		if cat.CategoryId == categoryId then
+			table.insert(tree, { value = -cat.Id, text = cat.Name, children = GetTree_InsertChildren(cat.Id, displayedPages) })
 		end
-		table.sort(children, function(a,b) return a.text < b.text end)
-
-		table.insert(tree, { value = -cat.Id, text = cat.Name, children = children })
 	end
 
 	for _, page in pairs(AngryNotes_Pages) do
-		if not pagesInCategories[page.Id] then
-			if page.Id == AngryNotes_State.displayed then
-				table.insert(tree, { value = page.Id, text = page.Name, icon = "Interface\\BUTTONS\\UI-GuildButton-MOTD-Up" })
-			else
-				table.insert(tree, { value = page.Id, text = page.Name })
-			end
+		if page.CategoryId == categoryId then
+			displayedPages[page.Id] = true
+			GetTree_InsertPage(tree, page)
+		end
+	end
+
+	table.sort(tree, function(a,b) return a.text < b.text end)
+	return tree
+end
+
+function AngryNotes:GetTree()
+	local tree = {}
+	local displayedPages = {}
+
+	for _, cat in pairs(AngryNotes_Categories) do
+		if not cat.CategoryId then
+			table.insert(tree, { value = -cat.Id, text = cat.Name, children = GetTree_InsertChildren(cat.Id, displayedPages) })
+		end
+	end
+
+	for _, page in pairs(AngryNotes_Pages) do
+		if not page.CategoryId or not displayedPages[page.Id] then
+			GetTree_InsertPage(tree, page)
 		end
 	end
 
@@ -596,7 +610,7 @@ function AngryNotes:UpdateTree(id)
 	if not self.window then return end
 	self.window.tree:SetTree( self:GetTree() )
 	if id then
-		self.window.tree:SelectByValue( id )
+		self:SetSelectedId( id )
 	end
 end
 
@@ -641,6 +655,31 @@ function AngryNotes:SelectedId()
 	return selectedLastValue( AngryNotes_State.tree.selected )
 end
 
+function AngryNotes:SetSelectedId(selectedId)
+	local page = AngryNotes_Pages[selectedId]
+	if page then
+		if page.CategoryId then
+			local cat = AngryNotes_Categories[page.CategoryId]
+			local path = { }
+			while cat do
+				table.insert(path, -cat.Id)
+				if cat.CategoryId then
+					cat = AngryNotes_Categories[cat.CategoryId]
+				else 
+					cat = nil
+				end
+			end
+			tReverse(path)
+			table.insert(path, page.Id)
+			self.window.tree:SelectByPath(unpack(path))
+		else
+			self.window.tree:SelectByValue(page.Id)
+		end
+	else
+		self.window.tree:SetSelected()
+	end
+end
+
 function AngryNotes:Get(id)
 	if id == nil then id = self:SelectedId() end
 	return AngryNotes_Pages[id]
@@ -671,7 +710,7 @@ end
 function AngryNotes:DeletePage(id)
 	AngryNotes_Pages[id] = nil
 	if self.window and self:SelectedId() == id then
-		self.window.tree:SetSelected(nil)
+		self:SetSelectedId(nil)
 		self:UpdateSelected(true)
 	end
 	if AngryNotes_State.displayed == id then
@@ -683,7 +722,11 @@ end
 function AngryNotes:CreateCategory(name)
 	local id = math.random(2000000000)
 
-	AngryNotes_Categories[id] = { Id = id, Name = name, Children = {} }
+	AngryNotes_Categories[id] = { Id = id, Name = name }
+
+	if AngryNotes_State.tree.groups then
+		AngryNotes_State.tree.groups[ -id ] = true
+	end
 	self:UpdateTree()
 end
 
@@ -701,40 +744,55 @@ function AngryNotes:DeleteCategory(id)
 	if not cat then return end
 
 	local selectedId = self:SelectedId()
-	local wasChild = tContains(cat.Children, selectedId)
+
+	for _, c in pairs(AngryNotes_Categories) do
+		if cat.Id == c.CategoryId then
+			c.CategoryId = cat.CategoryId
+		end
+	end
+
+	for _, p in pairs(AngryNotes_Pages) do
+		if cat.Id == p.CategoryId then
+			p.CategoryId = cat.CategoryId
+		end
+	end
 
 	AngryNotes_Categories[id] = nil
 
 	self:UpdateTree()
-	if wasChild then
-		self.window.tree:SelectByValue(selectedId)
-	end
+	self:SetSelectedId(selectedId)
 end
 
-function AngryNotes:AssignCategory(pageId, catId)
-	local page = self:Get(pageId)
-	local cat = self:GetCat(catId)
-	if not page or not cat then return end
-
-	local parentId
-	if tContains(cat.Children, page.Id) then -- Already in that category, so unassign
-		tDeleteItem(cat.Children, page.Id)
+function AngryNotes:AssignCategory(entryId, parentId)
+	local page, cat
+	if entryId > 0 then
+		page = self:Get(entryId)
 	else
-		for _, c in pairs(AngryNotes_Categories) do
-			tDeleteItem(c.Children, page.Id)
-		end
-		table.insert(cat.Children, page.Id)
-		parentId = cat.Id
+		cat = self:GetCat(-entryId)
 	end
-	
+	local parent = self:GetCat(parentId)
+	if not (page or cat) or not parent then return end
+
+	if page then
+		if page.CategoryId == parentId then
+			page.CategoryId = nil
+		else
+			page.CategoryId = parentId
+		end
+	end
+
+	if cat then
+		if cat.CategoryId == parentId then
+			cat.CategoryId = nil
+		else
+			cat.CategoryId = parentId
+		end
+	end
+
 	local selectedId = self:SelectedId()
 	self:UpdateTree()
-	if selectedId == page.Id then
-		if parentId then
-			self.window.tree:SelectByPath(-parentId, selectedId)
-		else
-			self.window.tree:SelectByValue(selectedId)
-		end
+	if selectedId == entryId then
+		self:SetSelectedId( selectedId )
 	end
 end
 
@@ -1251,6 +1309,18 @@ function AngryNotes:OnInitialize()
 	if AngryNotes_Config == nil then AngryNotes_Config = { } end
 	if AngryNotes_Categories == nil then
 		AngryNotes_Categories = { }
+	else
+		for _, cat in pairs(AngryNotes_Categories) do
+			if cat.Children then
+				for _, pageId in ipairs(cat.Children) do
+					local page = AngryNotes_Pages[pageId]
+					if page then
+						page.CategoryId = cat.Id
+					end
+				end
+				cat.Children = nil
+			end
+		end
 	end
 
 	local ver = AngryNotes_Version
