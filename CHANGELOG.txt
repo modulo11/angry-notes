@@ -1,3 +1,7 @@
+## v0.2.2
+
+* Update for 7.1
+
 ## v0.2.1
 
 * Added ability to set categories for other categories, so can have multi-layered categories
