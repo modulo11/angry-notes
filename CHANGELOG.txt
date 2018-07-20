@@ -1,3 +1,7 @@
+## v0.3
+
+* Update for 8.0
+
 ## v0.2.2
 
 * Update for 7.1

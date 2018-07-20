@@ -1,14 +1,14 @@
 <Bindings>
-	<Binding name="AngryNotes_DISPLAY" header="AngryNotes">
+	<Binding name="AngryNotes_DISPLAY" header="AngryNotes" category="ADDONS">
 		AngryNotes_ToggleDisplay()
 	</Binding>
-	<Binding name="AngryNotes_LOCK" header="AngryNotes">
+	<Binding name="AngryNotes_LOCK" category="ADDONS">
 		AngryNotes_ToggleLock()
 	</Binding>
-	<Binding name="AngryNotes_WINDOW" header="AngryNotes">
+	<Binding name="AngryNotes_WINDOW" category="ADDONS">
 		AngryNotes_ToggleWindow()
 	</Binding>
-	<Binding name="AngryNotes_OUTPUT" header="AngryNotes">
+	<Binding name="AngryNotes_OUTPUT" category="ADDONS">
 		AngryNotes_OutputDisplayed()
 	</Binding>
 </Bindings>

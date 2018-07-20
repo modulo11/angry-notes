@@ -1654,7 +1654,7 @@ function AngryNotes:GROUP_ROSTER_UPDATE()
 end
 
 function AngryNotes:AfterEnable()
-	self:RegisterEvent("PARTY_CONVERTED_TO_RAID")
+	--self:RegisterEvent("PARTY_CONVERTED_TO_RAID")
 	self:RegisterEvent("GROUP_JOINED")
 	self:RegisterEvent("GROUP_ROSTER_UPDATE")
 	
