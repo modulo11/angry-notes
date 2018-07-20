@@ -351,7 +351,7 @@ local function AngryNotes_CategoryMenuList(entryId, parentId)
 
 	table.sort(categories, function(a,b) return a.text < b.text end)
 
-	if #categories  > 0 then
+	if #categories > 0 then
 		return categories
 	end
 end
@@ -373,8 +373,15 @@ function AngryNotes_PageMenu(pageId)
 	PagesDropDownList[1].text = page.Name
 	PagesDropDownList[2].arg1 = pageId
 	PagesDropDownList[3].arg1 = pageId
-	PagesDropDownList[4].menuList = AngryNotes_CategoryMenuList(pageId)
 
+	local categories = AngryNotes_CategoryMenuList(pageId)
+	if categories ~= nil then
+		PagesDropDownList[4].menuList = categories
+		PagesDropDownList[4].disabled = false
+	else
+		PagesDropDownList[4].menuList = {}
+		PagesDropDownList[4].disabled = true
+	end
 	return PagesDropDownList
 end
 
@@ -394,7 +401,15 @@ local function AngryNotes_CategoryMenu(catId)
 	CategoriesDropDownList[1].text = cat.Name
 	CategoriesDropDownList[2].arg1 = catId
 	CategoriesDropDownList[3].arg1 = catId
-	CategoriesDropDownList[4].menuList = AngryNotes_CategoryMenuList(-catId)
+
+	local categories = AngryNotes_CategoryMenuList(-catId)
+	if categories ~= nil then
+		CategoriesDropDownList[4].menuList = categories
+		CategoriesDropDownList[4].disabled = false
+	else
+		CategoriesDropDownList[4].menuList = {}
+		CategoriesDropDownList[4].disabled = true
+	end
 
 	return CategoriesDropDownList
 end
@@ -554,6 +569,7 @@ function AngryNotes:CreateWindow()
 	window.button_clear = button_clear
 
 	self:UpdateSelected(true)
+	self:UpdateMedia()
 	
 	--self:CreateIconPicker()
 end
@@ -984,10 +1000,6 @@ function AngryNotes:UpdateDirection()
 		self.display_text:SetInsertMode(SCROLLING_MESSAGE_FRAME_INSERT_MODE_BOTTOM)
 		self.direction_button:GetNormalTexture():SetTexCoord(0, 0.5, 0.5, 1)
 		self.direction_button:GetPushedTexture():SetTexCoord(0.5, 1, 0.5, 1)
-
-		self.backdrop:ClearAllPoints()
-		self.backdrop:SetPoint("BOTTOMLEFT", -4, -4)
-		self.backdrop:SetPoint("BOTTOMRIGHT", 4, -4)
 	else
 		self.display_text:ClearAllPoints()
 		self.display_text:SetPoint("TOPLEFT", 0, -8)
@@ -995,10 +1007,6 @@ function AngryNotes:UpdateDirection()
 		self.display_text:SetInsertMode(SCROLLING_MESSAGE_FRAME_INSERT_MODE_TOP)
 		self.direction_button:GetNormalTexture():SetTexCoord(0, 0.5, 0, 0.5)
 		self.direction_button:GetPushedTexture():SetTexCoord(0.5, 1, 0, 0.5)
-
-		self.backdrop:ClearAllPoints()
-		self.backdrop:SetPoint("TOPLEFT", -4, 4)
-		self.backdrop:SetPoint("TOPRIGHT", 4, 4)
 	end
 	if self.display_text:IsShown() then
 		self.display_text:Hide()
@@ -1008,21 +1016,24 @@ function AngryNotes:UpdateDirection()
 end
 
 function AngryNotes:UpdateBackdrop()
-	local regions = { self.display_text:GetRegions() }
-
-	local min, max, last_height
-	for i, region in ipairs(regions) do
-		if region:GetObjectType() == "FontString" then
-			local position = region:GetBottom()
-			if min == nil or position < min then min = position end
-			if max == nil or position > max then
-				max = position
-				last_height = region:GetHeight()
-			end
+	local first, last
+	for lineIndex, visibleLine in ipairs(self.display_text.visibleLines) do
+		local messageInfo = self.display_text.historyBuffer:GetEntryAtIndex(lineIndex)
+		if messageInfo then
+			if not first then first = visibleLine end
+			last = visibleLine
 		end
 	end
-	if min ~= nil and max ~= nil and self:GetConfig('backdropShow') then
-		self.backdrop:SetHeight( max - min + last_height + 8 )
+
+	if first and last and self:GetConfig('backdropShow') then
+		self.backdrop:ClearAllPoints()
+		if AngryNotes_State.directionUp then
+			self.backdrop:SetPoint("TOPLEFT", last, "TOPLEFT", -4, 4)
+			self.backdrop:SetPoint("BOTTOMRIGHT", first, "BOTTOMRIGHT", 4, -4)
+		else
+			self.backdrop:SetPoint("TOPLEFT", first, "TOPLEFT", -4, 4)
+			self.backdrop:SetPoint("BOTTOMRIGHT", last, "BOTTOMRIGHT", 4, -4)
+		end
 		self.backdrop:SetColorTexture( HexToRGB(self:GetConfig('backdropColor')) )
 		self.backdrop:Show()
 	else
@@ -1030,6 +1041,7 @@ function AngryNotes:UpdateBackdrop()
 	end
 end
 
+local editFontName, editFontHeight, editFontFlags
 function AngryNotes:UpdateMedia()
 	local fontName = LSM:Fetch("font", AngryNotes:GetConfig('fontName'))
 	local fontHeight = AngryNotes:GetConfig('fontHeight')
@@ -1038,6 +1050,18 @@ function AngryNotes:UpdateMedia()
 	self.display_text:SetTextColor( HexToRGB(self:GetConfig('color')) )
 	self.display_text:SetFont(fontName, fontHeight, fontFlags)
 	self.display_text:SetSpacing( AngryNotes:GetConfig('lineSpacing') )
+
+	if self.window then
+		if self:GetConfig('editBoxFont') then
+			if not editFontName then
+				editFontName, editFontHeight, editFontFlags = self.window.text.editBox:GetFont()
+			end
+			self.window.text.editBox:SetFont(fontName, fontHeight, fontFlags)
+		elseif editFontName then
+			self.window.text.editBox:SetFont(editFontName, editFontHeight, editFontFlags)
+		end
+	end
+
 	self:UpdateBackdrop()
 end
 
@@ -1229,6 +1253,7 @@ function AngryNotes:OutputDisplayed(id)
 			:gsub(ci_pattern('{skull}'), "{rt8}")
 			:gsub(ci_pattern('{healthstone}'), "{hs}")
 			:gsub(ci_pattern('{hs}'), 'Healthstone')
+			:gsub(ci_pattern('{bloodlust}'), "{bl}")
 			:gsub(ci_pattern('{bl}'), 'Bloodlust')
 			:gsub(ci_pattern('{icon%s+([%w_]+)}'), '')
 			:gsub(ci_pattern('{damage}'), 'Damage')
@@ -1275,6 +1300,7 @@ local configDefaults = {
 	lineSpacing = 0,
 	backdropShow = false,
 	backdropColor = "00000080",
+	editBoxFont = false,
 }
 
 function AngryNotes:GetConfig(key)
@@ -1413,6 +1439,18 @@ function AngryNotes:OnInitialize()
 					elseif not result then 
 						self:Print( RED_FONT_COLOR_CODE .. "You don't have permission to send a page.|r" )
 					end
+				end
+			},
+			clear = {
+				type = "execute",
+				name = "Clear",
+				desc = "Clears currently displayed page",
+				order = 13,
+				hidden = true,
+				cmdHidden = false,
+				confirm = true,
+				func = function()
+					AngryNotes_ClearPage()
 				end
 			},
 			resetposition = {
@@ -1592,6 +1630,17 @@ function AngryNotes:OnInitialize()
 							self:SetConfig('lineSpacing', val)
 							self:UpdateMedia()
 							self:UpdateDisplayed()
+						end
+					},
+					editBoxFont =  {
+						type = "toggle",
+						order = 7,
+						name = "Change Edit Box Font",
+						desc = "Enable to set edit box font to display font",
+						get = function(info) return self:GetConfig('editBoxFont') end,
+						set = function(info, val)
+							self:SetConfig('editBoxFont', val)
+							self:UpdateMedia()
 						end
 					},
 				}

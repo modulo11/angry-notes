@@ -1,4 +1,8 @@
-## v0.3
+## v0.3.1
+
+* Various overdue bug fixes
+
+## v0.3.0
 
 * Update for 8.0
 
