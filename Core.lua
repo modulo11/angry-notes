@@ -1,4 +1,4 @@
-local AngryNotes = LibStub("AceAddon-3.0"):NewAddon("AngryNotes", "AceConsole-3.0", "AceEvent-3.0", "AceTimer-3.0")
+local AngryNotes = LibStub("AceAddon-3.0"):NewAddon("AngryNotes", "AceConsole-3.0", "AceEvent-3.0")
 local AceGUI = LibStub("AceGUI-3.0")
 local lwin = LibStub("LibWindow-1.1")
 local LSM = LibStub("LibSharedMedia-3.0")
@@ -1668,18 +1668,15 @@ end
 
 function AngryNotes:OnEnable()
 	self:CreateDisplay()
+	C_Timer.After(0.1, function() self:UpdateBackdrop() end)
 	
-	self:ScheduleTimer("AfterEnable", 4)
+	self:RegisterEvent("GROUP_JOINED")
+	self:RegisterEvent("GROUP_ROSTER_UPDATE")
 
 	self:RegisterEvent("PLAYER_REGEN_DISABLED")
 
 	LSM.RegisterCallback(self, "LibSharedMedia_Registered", "UpdateMedia")
 	LSM.RegisterCallback(self, "LibSharedMedia_SetGlobal", "UpdateMedia")
-end
-
-
-function AngryNotes:PARTY_CONVERTED_TO_RAID()
-	self:UpdateDisplayedIfNewGroup()
 end
 
 function AngryNotes:GROUP_JOINED()
@@ -1700,13 +1697,4 @@ function AngryNotes:GROUP_ROSTER_UPDATE()
 	else
 		self:UpdateDisplayedIfNewGroup()
 	end
-end
-
-function AngryNotes:AfterEnable()
-	--self:RegisterEvent("PARTY_CONVERTED_TO_RAID")
-	self:RegisterEvent("GROUP_JOINED")
-	self:RegisterEvent("GROUP_ROSTER_UPDATE")
-	
-	self:UpdateDisplayedIfNewGroup()
-	self:UpdateBackdrop()
 end
