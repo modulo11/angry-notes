@@ -454,7 +454,7 @@ function AngryNotes:CreateWindow()
 	AngryNotes.window = window
 
 	AngryNotes_Window = window.frame
-	window.frame:SetMinResize(700, 400)
+	window.frame:SetResizeBounds(700, 400)
 	window.frame:SetFrameStrata("HIGH")
 	window.frame:SetFrameLevel(1)
 	tinsert(UISpecialFrames, "AngryNotes_Window")
@@ -899,8 +899,7 @@ function AngryNotes:CreateDisplay()
 	frame:SetMovable(true)
 	frame:SetResizable(true)
 	frame:SetClampedToScreen(true)
-	frame:SetMinResize(180,1)
-	frame:SetMaxResize(830,1)
+	frame:SetResizeBounds(180, 1, 830, 1)
 	frame:SetFrameStrata("MEDIUM")	
 	self.frame = frame
 
@@ -1293,7 +1292,7 @@ local configDefaults = {
 	hideoncombat = false,
 	fontName = "Friz Quadrata TT",
 	fontHeight = 12,
-	fontFlags = "NONE",
+	fontFlags = "",
 	highlight = "",
 	highlightColor = "ffd200",
 	color = "ffffff",

@@ -1,4 +1,4 @@
-## Interface: 90001
+## Interface: 100002
 ## Title: Angry Notes
 ## Author: Ermad
 ## Version: @project-version@
